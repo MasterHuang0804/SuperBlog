@@ -4,18 +4,14 @@ from app import app,db,login_manager,openid
 from .forms import LoginForm
 from .models import User
 
-class Anonymous(AnonymousUserMixin):
-    def __init__(self):
-        self.username = 'Guest'
-        
-login_manager.anonymous_user = Anonymous
-
 @login_manager.user_loader
 def load_user(id):
+    print 'load_user'
     return User.query.get(int(id))
 
-@app.before_request
+@app.before_request 
 def before_request():
+    print 'before_request'
     g.user = current_user
 
 @app.route('/')
@@ -36,24 +32,26 @@ def index():
     
     return render_template('index.html',title='Home',user=user,posts=posts) 
 
+
 @app.route('/login',methods=['GET','POST'])
 @openid.loginhandler
 def login():
-    '''
-    if g.user is not None and g.user.is_authenticated:
+      
+    if g.user is not None and g.user.is_authenticated():
         return redirect(url_for('index'))
-    '''
-    
+        
     form = LoginForm()
     
     if form.validate_on_submit():
         session['remember_me'] = form.remember_me.data
+        
         return openid.try_login(form.openid.data,ask_for=['nickname','email'])        
         
-    return render_template('index.html',title='Sign In',form=form,providers=app.config['OPENID_PROVIDERS'])
+    return render_template('login.html',title='Sign In',form=form,providers=app.config['OPENID_PROVIDERS'])
     
 @openid.after_login
 def after_login(resp):
+    
     if resp.email is None or resp.email == "":
         flash('Invalid login.Please try again.')
         return redirect(url_for('login'))
@@ -78,9 +76,24 @@ def after_login(resp):
     login_user(user,remember = remember_me)
         
     return redirect(request.args.get('next') or url_for('index'))
+
+@app.route('/user/<nickname>')
+@login_required
+def user(nickname):
+    user = User.query.filter_by(nickname=nickname).first()
     
+    if user == None:
+        flash('User' + nickname + 'not found.')
+        return redirect(url_for('index'))
+    
+    posts = [
+             {'author':user,'body':'Test post #1'},
+             {'author':user,'body':'Test post #2'}
+             ]
+    
+    return render_template('user.html',user=user,posts=posts)
+
 @app.route('/logout')
 def logout():
     logout_user()
-    return redirect(url_for('index'))
-    
+    return redirect(url_for('index')) 
