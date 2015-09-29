@@ -10,15 +10,12 @@ class User(db.Model):
     about_me = db.Column(db.String(140))
     last_seen = db.Column(db.DateTime)
     
-    @property
     def is_authenticated(self):
         return True
     
-    @property
     def is_active(self):
         return True
     
-    @property
     def is_anonymous(self):
         return False
     
@@ -32,9 +29,22 @@ class User(db.Model):
         return '<User %r>' % (self.nickname)
     
     def avatar(self,size):
-        return 'http://www.gravatar.com/avatar' + md5(self.email).hexdigest() + '?d=mm&s=' + str(size)
+        return 'http://www.gravatar.com/avatar/' + md5(self.email).hexdigest() + '?d=mm&s=' + str(size)
     
-    
+    @staticmethod
+    def make_unique_nickname(nickname):
+        if User.query.filter_by(nickname = nickname).first() == None:
+            return nickname
+        
+        version = 2
+        while True:
+            new_nickname = nickname + str(version)
+            
+            if User.query.filter_by(nickname=nickname).first() == None:
+                break
+            version = version +1
+            
+        return new_nickname
     
     
 class Post(db.Model):

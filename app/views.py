@@ -1,19 +1,24 @@
 from flask import render_template,flash,redirect,session,url_for,request,g
 from flask.ext.login import login_user,logout_user,current_user,login_required,AnonymousUserMixin
-from app import app,db,login_manager,openid
-from .forms import LoginForm
+from app import app,db,login_manager,oid
+from .forms import LoginForm,EditForm
 from .models import User
+from datetime import datetime
 
 @login_manager.user_loader
 def load_user(id):
-    print 'load_user'
     return User.query.get(int(id))
 
 @app.before_request 
 def before_request():
-    print 'before_request'
     g.user = current_user
-
+    
+    if g.user.is_authenticated():
+        g.user.last_seen = datetime.utcnow()
+        db.session.add(g.user)
+        db.session.commit()
+        
+        
 @app.route('/')
 @app.route('/index')
 @login_required
@@ -34,7 +39,7 @@ def index():
 
 
 @app.route('/login',methods=['GET','POST'])
-@openid.loginhandler
+@oid.loginhandler
 def login():
       
     if g.user is not None and g.user.is_authenticated():
@@ -44,12 +49,12 @@ def login():
     
     if form.validate_on_submit():
         session['remember_me'] = form.remember_me.data
-        
-        return openid.try_login(form.openid.data,ask_for=['nickname','email'])        
-        
+                        
+        return oid.try_login(form.openid.data,ask_for=['nickname','email'])    
+            
     return render_template('login.html',title='Sign In',form=form,providers=app.config['OPENID_PROVIDERS'])
     
-@openid.after_login
+@oid.after_login
 def after_login(resp):
     
     if resp.email is None or resp.email == "":
@@ -57,12 +62,14 @@ def after_login(resp):
         return redirect(url_for('login'))
     
     user = User.query.filter_by(email=resp.email).first()
-    
+        
     if user is None:
         nickname = resp.nickname
         if nickname is None or nickname =="":
             nickname = resp.email.split('@')[0]
             
+        nickname = User.make_unique_nickname(nickname)
+
         user = User(nickname = resp.nickname,email=resp.email)
         db.session.add(user)
         db.session.commit()
@@ -96,4 +103,49 @@ def user(nickname):
 @app.route('/logout')
 def logout():
     logout_user()
-    return redirect(url_for('index')) 
+    return redirect(url_for('index'))
+
+
+@app.route('/edit',methods=['GET','POST'])
+@login_required
+def edit():
+    form = EditForm(g.user.nickname)
+    
+    if form.validate_on_submit():
+        g.user.nickname = form.nickname.data
+        g.user.about_me = form.about_me.data
+        
+        db.session.add(g.user)
+        db.session.commit()
+        
+        flash('Your changes have been saved.')
+        return redirect(url_for('edit'))
+    
+    else:
+        form.nickname.data = g.user.nickname
+        form.about_me.data = g.user.about_me
+        
+    return render_template('edit.html',form=form)
+
+
+@app.errorhandler(404)
+def internal_error(error):
+    return render_template('404.html'),404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'),500
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+     
